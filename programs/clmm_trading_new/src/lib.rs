@@ -1,7 +1,5 @@
 use anchor_lang::prelude::*;
-use anchor_spl::{
-    token::{self, Token, TokenAccount, Transfer},
-};
+use anchor_spl::token::{self, Token, TokenAccount};
 
 declare_id!("E39ZYh2CjA6ht8nNe5tRUKEWvBQMin8wB9Zi3iyrU8nG");
 
@@ -96,11 +94,7 @@ pub fn calculate_price_impact(
     Ok(impact)
 }
 
-pub fn validate_tick_range(
-    lower: i32,
-    upper: i32,
-    tick_spacing: i32,
-) -> Result<()> {
+pub fn validate_tick_range(lower: i32, upper: i32, tick_spacing: i32) -> Result<()> {
     require!(lower < upper, ErrorCode::InvalidTickRange);
     require!(lower % tick_spacing == 0, ErrorCode::InvalidTickRange);
     require!(upper % tick_spacing == 0, ErrorCode::InvalidTickRange);
@@ -144,12 +138,10 @@ pub struct CreateLiquidityParams {
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
 pub struct SwapV2Params {
-    pub amount_in: u64,
-    pub min_amount_out: u64,
+    pub amount: u64,
+    pub other_amount_threshold: u64,
     pub sqrt_price_limit_x64: u128,
     pub is_base_input: bool,
-    pub swap_direction: bool,
-    pub other_amount_threshold: u64,
 }
 
 // Context for CreateLiquidity and SwapV2 operations
@@ -202,49 +194,43 @@ pub struct CreateLiquidity<'info> {
 #[instruction(params: SwapV2Params)]
 pub struct SwapV2<'info> {
     #[account(mut)]
-    pub user: Signer<'info>,
-
-    #[account(mut)]
-    pub pool_state: Account<'info, PoolState>,
+    pub payer: Signer<'info>,
 
     /// CHECK: Verified through CPI
     pub amm_config: AccountInfo<'info>,
 
-    #[account(
-        mut,
-        constraint = user_source_token.owner == user.key()
-    )]
-    pub user_source_token: Account<'info, TokenAccount>,
-
-    #[account(
-        mut,
-        constraint = user_destination_token.owner == user.key()
-    )]
-    pub user_destination_token: Account<'info, TokenAccount>,
+    #[account(mut)]
+    pub pool_state: Account<'info, PoolState>,
 
     #[account(mut)]
-    pub pool_source_vault: Account<'info, TokenAccount>,
+    pub input_token_account: Account<'info, TokenAccount>,
 
     #[account(mut)]
-    pub pool_destination_vault: Account<'info, TokenAccount>,
+    pub output_token_account: Account<'info, TokenAccount>,
+
+    #[account(mut)]
+    pub input_vault: Account<'info, TokenAccount>,
+
+    #[account(mut)]
+    pub output_vault: Account<'info, TokenAccount>,
 
     /// CHECK: Verified through CPI
     pub observation_state: AccountInfo<'info>,
 
     /// CHECK: Verified through CPI
-    pub next_observation_state: Option<AccountInfo<'info>>,
-
-    /// CHECK: Verified through CPI
-    pub tick_array: AccountInfo<'info>,
-
-    /// CHECK: Verified through CPI
-    pub next_tick_array: Option<AccountInfo<'info>>,
-
-    /// CHECK: Verified through CPI
-    #[account(address = raydium::ID)]
-    pub raydium_program: AccountInfo<'info>,
-
     pub token_program: Program<'info, Token>,
+
+    /// CHECK: Verified through CPI
+    pub token_program_2022: Program<'info, Token>,
+
+    /// CHECK: Verified through CPI
+    pub memo_program: AccountInfo<'info>,
+
+    /// CHECK: Verified through CPI
+    pub input_vault_mint: AccountInfo<'info>,
+
+    /// CHECK: Verified through CPI
+    pub output_vault_mint: AccountInfo<'info>,
 }
 
 // Program implementation
@@ -274,12 +260,19 @@ pub mod clmm_trading_new {
         Ok(())
     }
 
-    pub fn create_liquidity(ctx: Context<CreateLiquidity>, params: CreateLiquidityParams) -> Result<()> {
+    pub fn create_liquidity(
+        ctx: Context<CreateLiquidity>,
+        params: CreateLiquidityParams,
+    ) -> Result<()> {
         let pool_state = &mut ctx.accounts.pool_state;
         require!(!pool_state.is_paused, ErrorCode::PoolIsPaused);
 
         // Perform validations
-        validate_tick_range(params.tick_lower_index, params.tick_upper_index, pool_state.tick_spacing)?;
+        validate_tick_range(
+            params.tick_lower_index,
+            params.tick_upper_index,
+            pool_state.tick_spacing,
+        )?;
 
         // Emit event
         emit!(LiquidityAddedEvent {
@@ -294,58 +287,42 @@ pub mod clmm_trading_new {
         Ok(())
     }
 
-
-    pub fn swap_v2(
-        ctx: Context<SwapV2>,
-        params: SwapV2Params,
-    ) -> Result<()> {
-        let pool_state = &mut ctx.accounts.pool_state;
-
-        require!(!pool_state.is_paused, ErrorCode::PoolPaused);
-        require!(params.amount_in > 0, ErrorCode::InsufficientInput);
+    pub fn swap_v2(ctx: Context<SwapV2>, params: SwapV2Params) -> Result<()> {
+        require!(!ctx.accounts.pool_state.is_paused, ErrorCode::PoolPaused);
+        require!(params.amount > 0, ErrorCode::InsufficientInput);
 
         // Validate slippage and price impact
         let price_impact = calculate_price_impact(
-            params.amount_in,
-            params.min_amount_out,
-            pool_state.current_sqrt_price,
+            params.amount,
+            params.other_amount_threshold,
+            ctx.accounts.pool_state.current_sqrt_price,
         )?;
-        require!(price_impact <= MAX_PRICE_IMPACT, ErrorCode::ExcessivePriceImpact);
+        require!(
+            price_impact <= MAX_PRICE_IMPACT,
+            ErrorCode::ExcessivePriceImpact
+        );
 
-        // Prepare swap accounts
-        let mut accounts = vec![
-            AccountMeta::new(pool_state.key(), false),
+        let accounts = vec![
+            AccountMeta::new_readonly(ctx.accounts.payer.key(), true),
             AccountMeta::new_readonly(ctx.accounts.amm_config.key(), false),
-            AccountMeta::new_readonly(ctx.accounts.user.key(), true),
-            AccountMeta::new(ctx.accounts.user_source_token.key(), false),
-            AccountMeta::new(ctx.accounts.user_destination_token.key(), false),
-            AccountMeta::new(ctx.accounts.pool_source_vault.key(), false),
-            AccountMeta::new(ctx.accounts.pool_destination_vault.key(), false),
-            AccountMeta::new_readonly(ctx.accounts.observation_state.key(), false),
-            AccountMeta::new_readonly(ctx.accounts.tick_array.key(), false),
+            AccountMeta::new(ctx.accounts.pool_state.key(), false),
+            AccountMeta::new(ctx.accounts.input_token_account.key(), false),
+            AccountMeta::new(ctx.accounts.output_token_account.key(), false),
+            AccountMeta::new(ctx.accounts.input_vault.key(), false),
+            AccountMeta::new(ctx.accounts.output_vault.key(), false),
+            AccountMeta::new(ctx.accounts.observation_state.key(), false),
+            AccountMeta::new_readonly(ctx.accounts.token_program.key(), false),
+            AccountMeta::new_readonly(ctx.accounts.token_program_2022.key(), false),
+            AccountMeta::new_readonly(ctx.accounts.memo_program.key(), false),
+            AccountMeta::new_readonly(ctx.accounts.input_vault_mint.key(), false),
+            AccountMeta::new_readonly(ctx.accounts.output_vault_mint.key(), false),
         ];
 
-        // Add optional accounts if provided
-        if let Some(next_observation) = &ctx.accounts.next_observation_state {
-            accounts.push(AccountMeta::new_readonly(next_observation.key(), false));
-        }
-        if let Some(next_tick) = &ctx.accounts.next_tick_array {
-            accounts.push(AccountMeta::new_readonly(next_tick.key(), false));
-        }
-        accounts.push(AccountMeta::new_readonly(ctx.accounts.token_program.key(), false));
-
-        let pool_state = &mut ctx.accounts.pool_state;
-        let pool_state_account_info = pool_state.clone().to_account_info();
-
-
-        // Create swap instruction
         let swap_data = SwapV2Params {
-            amount_in: params.amount_in,
-            min_amount_out: params.min_amount_out,
+            amount: params.amount,
+            other_amount_threshold: params.other_amount_threshold,
             sqrt_price_limit_x64: params.sqrt_price_limit_x64,
             is_base_input: params.is_base_input,
-            swap_direction: params.swap_direction,
-            other_amount_threshold: params.other_amount_threshold,
         };
 
         let mut instruction_data = Vec::new();
@@ -357,29 +334,28 @@ pub mod clmm_trading_new {
             data: instruction_data,
         };
 
-        // Execute swap through CPI
         let account_infos = &[
-            pool_state_account_info, // Immutable borrow here
+            ctx.accounts.payer.to_account_info(),
             ctx.accounts.amm_config.to_account_info(),
-            ctx.accounts.user.to_account_info(),
-            ctx.accounts.user_source_token.to_account_info(),
-            ctx.accounts.user_destination_token.to_account_info(),
-            ctx.accounts.pool_source_vault.to_account_info(),
-            ctx.accounts.pool_destination_vault.to_account_info(),
+            ctx.accounts.pool_state.to_account_info(),
+            ctx.accounts.input_token_account.to_account_info(),
+            ctx.accounts.output_token_account.to_account_info(),
+            ctx.accounts.input_vault.to_account_info(),
+            ctx.accounts.output_vault.to_account_info(),
             ctx.accounts.observation_state.to_account_info(),
-            ctx.accounts.tick_array.to_account_info(),
             ctx.accounts.token_program.to_account_info(),
+            ctx.accounts.token_program_2022.to_account_info(),
+            ctx.accounts.memo_program.to_account_info(),
+            ctx.accounts.input_vault_mint.to_account_info(),
+            ctx.accounts.output_vault_mint.to_account_info(),
         ];
 
-        anchor_lang::solana_program::program::invoke(
-            &swap_ix,
-            account_infos,
-        )?;
+        anchor_lang::solana_program::program::invoke(&swap_ix, account_infos)?;
 
         emit!(SwapEvent {
-            pool_id: pool_state.pool_id, // Mutable borrow used here
-            amount_in: params.amount_in,
-            amount_out_min: params.min_amount_out,
+            pool_id: ctx.accounts.pool_state.pool_id,
+            amount_in: params.amount,
+            amount_out_min: params.other_amount_threshold,
             price_impact,
             sqrt_price_limit: params.sqrt_price_limit_x64,
         });
@@ -443,7 +419,7 @@ pub enum ErrorCode {
     #[msg("Token account balance insufficient")]
     InsufficientTokenBalance,
     #[msg("Pool is Paused")]
-    PoolIsPaused
+    PoolIsPaused,
 }
 
 #[derive(Accounts)]
@@ -503,37 +479,34 @@ pub struct UserPosition {
 }
 
 impl<'info> SwapV2<'info> {
-    fn validate_accounts(&self) -> Result<()> {
-        require!(
-            self.user_source_token.owner == self.user.key(),
-            ErrorCode::InvalidTokenAccountOwner
-        );
-        require!(
-            self.user_destination_token.owner == self.user.key(),
-            ErrorCode::InvalidTokenAccountOwner
-        );
-        Ok(())
-    }
+    // fn validate_accounts(&self) -> Result<()> {
+    //     require!(
+    //         self.user_source_token.owner == self.payer.key(),
+    //         ErrorCode::InvalidTokenAccountOwner
+    //     );
+    //     require!(
+    //         self.user_destination_token.owner == self.payer.key(),
+    //         ErrorCode::InvalidTokenAccountOwner
+    //     );
+    //     Ok(())
+    // }
 
-    fn verify_pool_state(&self) -> Result<()> {
-        let pool_state = &self.pool_state;
-        require!(!pool_state.is_paused, ErrorCode::PoolPaused);
-        require!(pool_state.liquidity > 0, ErrorCode::ZeroLiquidity);
-        Ok(())
-    }
+    // fn verify_pool_state(&self) -> Result<()> {
+    //     let pool_state = &self.pool_state;
+    //     require!(!pool_state.is_paused, ErrorCode::PoolPaused);
+    //     require!(pool_state.liquidity > 0, ErrorCode::ZeroLiquidity);
+    //     Ok(())
+    // }
 
-    fn transfer_tokens_to_pool(
-        &self,
-        amount: u64,
-    ) -> Result<()> {
-        let cpi_accounts = Transfer {
-            from: self.user_source_token.to_account_info(),
-            to: self.pool_source_vault.to_account_info(),
-            authority: self.user.to_account_info(),
-        };
-        let cpi_program = self.token_program.to_account_info();
-        let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
-        token::transfer(cpi_ctx, amount)?;
-        Ok(())
-    }
+    // fn transfer_tokens_to_pool(&self, amount: u64) -> Result<()> {
+    //     let cpi_accounts = Transfer {
+    //         from: self.user_source_token.to_account_info(),
+    //         to: self.pool_source_vault.to_account_info(),
+    //         authority: self.user.to_account_info(),
+    //     };
+    //     let cpi_program = self.token_program.to_account_info();
+    //     let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
+    //     token::transfer(cpi_ctx, amount)?;
+    //     Ok(())
+    // }
 }

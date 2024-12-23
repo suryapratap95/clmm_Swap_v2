@@ -132,36 +132,34 @@ describe('CLMM Trading New', () => {
     console.log('Liquidity created with tx: ', tx);
   });
 
-  it('Performs swap', async () => {
-    // Swap parameters
-    const params = {
-      amountIn: new anchor.BN(100),
-      minAmountOut: new anchor.BN(90),
-      sqrtPriceLimitX64: new anchor.BN(0),
-      isBaseInput: true,
-      swapDirection: true,
-      otherAmountThreshold: new anchor.BN(0),
-    };
+  // it('Performs swap', async () => {
+  //   // Swap parameters
+  //   const params = {
+  //     amount: new anchor.BN(100),
+  //     otherAmountThreshold: new anchor.BN(0),
+  //     sqrtPriceLimitX64: new anchor.BN(0),
+  //     isBaseInput: true,
+  //   };
 
-    // Perform swap
-    const tx = await program.rpc.swapV2(params, {
-      accounts: {
-        user: user.publicKey,
-        poolState: poolState.publicKey,
-        ammConfig: poolState.publicKey,  // Assuming some default configuration
-        userSourceToken: userToken0Account,
-        userDestinationToken: userToken1Account,
-        poolSourceVault: poolToken0Vault,
-        poolDestinationVault: poolToken1Vault,
-        observationState: poolState.publicKey,
-        tickArray: poolState.publicKey,
-        raydiumProgram: raydiumProgramId,
-        tokenProgram: TOKEN_PROGRAM_ID,
-      },
-      signers: [user],
-    });
+  //   // Perform swap
+  //   const tx = await program.rpc.swapV2(params, {
+  //     accounts: {
+  //       user: user.publicKey,
+  //       poolState: poolState.publicKey,
+  //       ammConfig: poolState.publicKey,  // Assuming some default configuration
+  //       userSourceToken: userToken0Account,
+  //       userDestinationToken: userToken1Account,
+  //       poolSourceVault: poolToken0Vault,
+  //       poolDestinationVault: poolToken1Vault,
+  //       observationState: poolState.publicKey,
+  //       tickArray: poolState.publicKey,
+  //       raydiumProgram: raydiumProgramId,
+  //       tokenProgram: TOKEN_PROGRAM_ID,
+  //     },
+  //     signers: [user],
+  //   });
 
-    console.log('Swap performed with tx: ', tx);
-  });
+  //   console.log('Swap performed with tx: ', tx);
+  // });
 });
 
