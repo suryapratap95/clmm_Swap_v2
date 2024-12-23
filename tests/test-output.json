@@ -1,0 +1,73 @@
+{
+  "network": "devnet",
+  "programId": "E39ZYh2CjA6ht8nNe5tRUKEWvBQMin8wB9Zi3iyrU8nG",
+  "raydiumClmmProgramId": "devi51mZmdwUJGU9hjN27vEz64Gps7uUefqxg27EAtH",
+  "testAccounts": {
+    "wallet": "FAhoh1ihPVBvYF9qQ7FTi6yASzE2tdhMccgi6jd2MBM7",
+    "deployer": "",
+    "user": "D2KPgFoVaNXxy6p25NcSk2R4eFeCCPAJZdrq8EJPysxf"
+  },
+  "testTokens": {
+    "tokenA": {
+      "mint": "B4qZpKhcCorbFVrsgBHmuDtLQyLrwxirbJGXoTm7swZ4",
+      "decimals": 6,
+      "userAccount": "2J96RP9WprNjeq1wutdUfQj3dEh3nsaYBNEGHTQBtLes",
+      "poolVault": ""
+    },
+    "tokenB": {
+      "mint": "4cpJ5qZ5vczkGUxeDdu2mYWmZgA5CMdfpCFPXfYdEeKu",
+      "decimals": 6,
+      "userAccount": "Dw3RW9ZHa4HW32EtZNDwQF3JsPfLAWgpqQbvwaY55QHP",
+      "poolVault": ""
+    }
+  },
+  "poolAccounts": {
+    "poolState": "",
+    "ammConfig": "",
+    "observationState": "",
+    "tickArray": "",
+    "authority": ""
+  },
+  "transactions": {
+    "setup": {
+      "funding": {
+        "user": "2aHLrCwcpNG3GQDfBecCQcz5JgKTkevFCekgZDgNh53YyrwpTpsBwpt2zREwTWgq5Kpf5q4Ck3FS3tr41Vk6xaaa",
+        "poolAuthority": "ELQL8puQLSRNHspzDwbimoDYSB7PymDqqVS5rVxecnyepLFQNCaNA69SAiqbMp7nphmYtZsxjdWCcrL591vVQvX"
+      },
+      "createTokenA": "",
+      "createTokenB": "",
+      "createUserTokenAccounts": {
+        "tokenA": "",
+        "tokenB": ""
+      },
+      "mintTokens": {
+        "tokenA": "3UCqfCG2NPoNcRh5i6kSJ2HugCNBL9rLRcBgPB2XHsQjGJcHk8fRkQsXmXxJ4oNugJBAr6jJQxUfgkcY7fVA8MxN",
+        "tokenB": "28H1nwyoYD5PKbtfRGUx7QtweLtnym3MP6o3ESDhefEQznXqHG8FTguzWhtoUdZHtBQc5CPzsyi5RvgYRzfi7dsf"
+      },
+      "poolInitialization": ""
+    },
+    "tests": {
+      "createLiquidity": [],
+      "swapV2": []
+    }
+  },
+  "testResults": {
+    "balances": {
+      "initial": {
+        "tokenA": "",
+        "tokenB": "",
+        "sol": ""
+      },
+      "afterLiquidity": {
+        "tokenA": "",
+        "tokenB": "",
+        "sol": ""
+      },
+      "afterSwap": {
+        "tokenA": "",
+        "tokenB": "",
+        "sol": ""
+      }
+    }
+  }
+}

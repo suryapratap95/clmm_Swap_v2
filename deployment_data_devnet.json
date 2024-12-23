@@ -1,0 +1,24 @@
+{
+  "timestamp": "2024-12-19T09:51:52.894Z",
+  "network": "devnet",
+  "programId": "E39ZYh2CjA6ht8nNe5tRUKEWvBQMin8wB9Zi3iyrU8nG",
+  "raydiumProgramId": "devi51mZmdwUJGU9hjN27vEz64Gps7uUefqxg27EAtH",
+  "addresses": {
+    "poolState": "CLSqSmmvcrBbUma82p38c2dmXze12FFjgcYbzqzkcQiw",
+    "ammConfig": "9xtdmA2bTTPCAvopwdk2Mfx5tcq8ZvsBxdnKzGmudjsy",
+    "userAccounts": {
+      "sourceToken": "4TDobuhdZuwtffMLU3bti5i1QaSSKgXemG2Cq9wF4pQG",
+      "destinationToken": "H1tppSq6GmWACdqXFcFjaQhPg1cWjU5pPqj4bDWUQEta",
+      "wallet": "FAhoh1ihPVBvYF9qQ7FTi6yASzE2tdhMccgi6jd2MBM7"
+    },
+    "poolAccounts": {
+      "sourceVault": "CqrcYuWLqoVSwjH6Vb2JqXnebLH7d3qeYwsBnr3y4MvB",
+      "destinationVault": "EeqVWcXGmGxkiGypNGt8NLF4mueTZgoguFaPHWL8euWm",
+      "observationState": "E9zMCCSga3DU4BscfhvSTbgA1odzzGxXB2SeRtL81dNp"
+    }
+  },
+  "transactions": {
+    "poolInitialization": "",
+    "routerSwaps": []
+  }
+}
