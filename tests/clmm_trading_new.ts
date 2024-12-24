@@ -1,5 +1,6 @@
 import * as anchor from '@project-serum/anchor';
-import idl from "output.json";
+import idl from './idl.json';
+import { ClmmTradingNew } from './idl';
 
 
 describe('CLMM Trading New - swap_v2 Test', () => {
@@ -12,7 +13,7 @@ describe('CLMM Trading New - swap_v2 Test', () => {
   const provider = anchor.AnchorProvider.local();
   anchor.setProvider(provider);
 
-  const program = new anchor.Program(idl, programId, provider);
+  const program = new anchor.Program(idl as ClmmTradingNew, programId, provider);
 
   // Hardcoded public keys (replace these with actual values for your test setup)
   const raydiumProgramId = new anchor.web3.PublicKey("devi51mZmdwUJGU9hjN27vEz64Gps7uUefqxg27EAtH");
@@ -39,13 +40,13 @@ describe('CLMM Trading New - swap_v2 Test', () => {
   // Hardcoded private key for the user
   const userSecretKey = Uint8Array.from([153, 218, 59, 120, 157, 190, 93, 0, 143, 197, 255, 0, 126, 2, 107, 43, 48, 237, 161, 185, 31, 172, 195, 176, 179, 137, 1, 184, 27, 174, 227, 62, 27, 85, 211, 246, 143, 57, 206, 93, 160, 75, 208, 73, 51, 38, 82, 167, 148, 41, 170, 233, 39, 78, 190, 224, 90, 78, 118, 71, 129, 82, 177, 116]);
 
-  let user: anchor.web3.Keypair;
+  let payer: anchor.web3.Keypair;
 
   before(async () => {
     // Load user keypair from the hardcoded private key
-    user = anchor.web3.Keypair.fromSecretKey(userSecretKey);
+    payer = anchor.web3.Keypair.fromSecretKey(userSecretKey);
 
-    console.log('Using user with public key:', user.publicKey.toString());
+    console.log('Using user with public key:', payer.publicKey.toString());
   });
 
   it('Performs a token swap', async () => {
@@ -59,7 +60,7 @@ describe('CLMM Trading New - swap_v2 Test', () => {
 
     // Perform the swap transaction
     const tx = await program.methods.swapV2(params).accounts({
-      payer: user.publicKey,
+      payer: payer.publicKey,
       ammConfig: ammConfigAddress,
       poolState: poolStateAddress,
       inputTokenAccount: userInputTokenAccount,
@@ -72,7 +73,7 @@ describe('CLMM Trading New - swap_v2 Test', () => {
       memoProgram: memoProgram,
       inputVaultMint: inputVaultMintAddress,
       outputVaultMint: outputVaultMintAddress,
-    }).signers([user]).rpc();
+    }).signers([payer]).rpc();
 
     console.log('Swap transaction signature:', tx);
   });

@@ -1,5 +1,5 @@
 use anchor_lang::prelude::*;
-use anchor_spl::token::{self, Token, TokenAccount};
+use anchor_spl::{token::{self, Mint, Token, TokenAccount}, token_2022::Token2022};
 
 declare_id!("E39ZYh2CjA6ht8nNe5tRUKEWvBQMin8wB9Zi3iyrU8nG");
 
@@ -19,87 +19,9 @@ pub struct SwapEvent {
     pub pool_id: Pubkey,
     pub amount_in: u64,
     pub amount_out_min: u64,
-    pub price_impact: u64,
     pub sqrt_price_limit: u128,
 }
 
-#[event]
-pub struct LiquidityAddedEvent {
-    pub pool_id: Pubkey,
-    pub liquidity_added: u128,
-    pub tick_lower_index: i32,
-    pub tick_upper_index: i32,
-    pub amount_0: u64,
-    pub amount_1: u64,
-}
-
-#[event]
-pub struct LiquidityRemovedEvent {
-    pub pool_id: Pubkey,
-    pub liquidity_removed: u128,
-    pub tick_lower_index: i32,
-    pub tick_upper_index: i32,
-    pub amount_0: u64,
-    pub amount_1: u64,
-}
-
-#[event]
-pub struct PoolUpdateEvent {
-    pub pool_id: Pubkey,
-    pub sqrt_price: u128,
-    pub tick_index: i32,
-    pub liquidity: u128,
-    pub fee_growth_global_0: u128,
-    pub fee_growth_global_1: u128,
-}
-
-#[event]
-pub struct PositionUpdateEvent {
-    pub owner: Pubkey,
-    pub pool: Pubkey,
-    pub liquidity: u128,
-    pub tick_lower_index: i32,
-    pub tick_upper_index: i32,
-    pub tokens_owed_0: u64,
-    pub tokens_owed_1: u64,
-    pub update_type: String,
-}
-
-// Helper functions
-pub fn calculate_price_impact(
-    amount_in: u64,
-    amount_out_min: u64,
-    current_sqrt_price: u128,
-) -> Result<u64> {
-    // Price impact calculation using square root price
-    let amount_in_u128 = amount_in as u128;
-    let amount_out_u128 = amount_out_min as u128;
-
-    let ideal_out = amount_in_u128
-        .checked_mul(current_sqrt_price)
-        .ok_or(ErrorCode::MathOverflow)?;
-
-    let actual_out = amount_out_u128
-        .checked_mul(current_sqrt_price)
-        .ok_or(ErrorCode::MathOverflow)?;
-
-    let impact = ideal_out
-        .checked_sub(actual_out)
-        .ok_or(ErrorCode::MathOverflow)?
-        .checked_mul(10000)
-        .ok_or(ErrorCode::MathOverflow)?
-        .checked_div(ideal_out)
-        .ok_or(ErrorCode::MathOverflow)? as u64;
-
-    Ok(impact)
-}
-
-pub fn validate_tick_range(lower: i32, upper: i32, tick_spacing: i32) -> Result<()> {
-    require!(lower < upper, ErrorCode::InvalidTickRange);
-    require!(lower % tick_spacing == 0, ErrorCode::InvalidTickRange);
-    require!(upper % tick_spacing == 0, ErrorCode::InvalidTickRange);
-    Ok(())
-}
 
 // PoolState Account
 #[account]
@@ -126,16 +48,6 @@ pub struct PoolState {
     pub last_updated: i64,
 }
 
-// Parameters for liquidity creation and swap operations
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
-pub struct CreateLiquidityParams {
-    pub liquidity_delta: u128,
-    pub tick_lower_index: i32,
-    pub tick_upper_index: i32,
-    pub amount_0_max: u64,
-    pub amount_1_max: u64,
-}
-
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
 pub struct SwapV2Params {
     pub amount: u64,
@@ -144,51 +56,6 @@ pub struct SwapV2Params {
     pub is_base_input: bool,
 }
 
-// Context for CreateLiquidity and SwapV2 operations
-#[derive(Accounts)]
-#[instruction(params: CreateLiquidityParams)]
-pub struct CreateLiquidity<'info> {
-    #[account(mut)]
-    pub user: Signer<'info>,
-
-    #[account(mut)]
-    pub pool_state: Account<'info, PoolState>,
-
-    #[account(
-        mut,
-        constraint = user_token_0_account.owner == user.key(),
-        constraint = user_token_0_account.mint == pool_state.token_mint_0
-    )]
-    pub user_token_0_account: Account<'info, TokenAccount>,
-
-    #[account(
-        mut,
-        constraint = user_token_1_account.owner == user.key(),
-        constraint = user_token_1_account.mint == pool_state.token_mint_1
-    )]
-    pub user_token_1_account: Account<'info, TokenAccount>,
-
-    #[account(
-        mut,
-        constraint = pool_token_0_vault.owner == pool_state.authority,
-        constraint = pool_token_0_vault.mint == pool_state.token_mint_0
-    )]
-    pub pool_token_0_vault: Account<'info, TokenAccount>,
-
-    #[account(
-        mut,
-        constraint = pool_token_1_vault.owner == pool_state.authority,
-        constraint = pool_token_1_vault.mint == pool_state.token_mint_1
-    )]
-    pub pool_token_1_vault: Account<'info, TokenAccount>,
-
-    /// CHECK: Verified through CPI
-    #[account(address = raydium::ID)]
-    pub raydium_program: AccountInfo<'info>,
-
-    pub token_program: Program<'info, Token>,
-    pub system_program: Program<'info, System>,
-}
 
 #[derive(Accounts)]
 #[instruction(params: SwapV2Params)]
@@ -238,69 +105,7 @@ pub struct SwapV2<'info> {
 pub mod clmm_trading_new {
     use super::*;
 
-    pub fn initialize_pool(
-        ctx: Context<InitializePool>,
-        tick_spacing: i32,
-        initial_sqrt_price: u128,
-    ) -> Result<()> {
-        let pool_state = &mut ctx.accounts.pool_state;
-
-        require!(tick_spacing > 0, ErrorCode::InvalidTickSpacing);
-        require!(initial_sqrt_price > 0, ErrorCode::InvalidSqrtPrice);
-
-        pool_state.authority = ctx.accounts.authority.key();
-        pool_state.token_mint_0 = ctx.accounts.token_mint_0.key();
-        pool_state.token_mint_1 = ctx.accounts.token_mint_1.key();
-        pool_state.tick_spacing = tick_spacing;
-        pool_state.current_sqrt_price = initial_sqrt_price;
-        pool_state.token_vault_0 = ctx.accounts.token_vault_0.key();
-        pool_state.token_vault_1 = ctx.accounts.token_vault_1.key();
-        pool_state.is_paused = false;
-        pool_state.pool_id = pool_state.key();
-        Ok(())
-    }
-
-    pub fn create_liquidity(
-        ctx: Context<CreateLiquidity>,
-        params: CreateLiquidityParams,
-    ) -> Result<()> {
-        let pool_state = &mut ctx.accounts.pool_state;
-        require!(!pool_state.is_paused, ErrorCode::PoolIsPaused);
-
-        // Perform validations
-        validate_tick_range(
-            params.tick_lower_index,
-            params.tick_upper_index,
-            pool_state.tick_spacing,
-        )?;
-
-        // Emit event
-        emit!(LiquidityAddedEvent {
-            pool_id: pool_state.key(),
-            liquidity_added: params.liquidity_delta,
-            tick_lower_index: params.tick_lower_index,
-            tick_upper_index: params.tick_upper_index,
-            amount_0: params.amount_0_max,
-            amount_1: params.amount_1_max,
-        });
-
-        Ok(())
-    }
-
     pub fn swap_v2(ctx: Context<SwapV2>, params: SwapV2Params) -> Result<()> {
-        require!(!ctx.accounts.pool_state.is_paused, ErrorCode::PoolPaused);
-        require!(params.amount > 0, ErrorCode::InsufficientInput);
-
-        // Validate slippage and price impact
-        let price_impact = calculate_price_impact(
-            params.amount,
-            params.other_amount_threshold,
-            ctx.accounts.pool_state.current_sqrt_price,
-        )?;
-        require!(
-            price_impact <= MAX_PRICE_IMPACT,
-            ErrorCode::ExcessivePriceImpact
-        );
 
         let accounts = vec![
             AccountMeta::new_readonly(ctx.accounts.payer.key(), true),
@@ -356,7 +161,6 @@ pub mod clmm_trading_new {
             pool_id: ctx.accounts.pool_state.pool_id,
             amount_in: params.amount,
             amount_out_min: params.other_amount_threshold,
-            price_impact,
             sqrt_price_limit: params.sqrt_price_limit_x64,
         });
 
