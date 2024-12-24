@@ -1,165 +1,79 @@
 import * as anchor from '@project-serum/anchor';
-import { SystemProgram } from '@solana/web3.js';
-import { Token, TOKEN_PROGRAM_ID } from '@solana/spl-token';
-import { assert } from 'chai';
+import idl from "output.json";
 
-// Define program ID and client
-const programId = new anchor.web3.PublicKey("E39ZYh2CjA6ht8nNe5tRUKEWvBQMin8wB9Zi3iyrU8nG");
-const raydiumProgramId = new anchor.web3.PublicKey("devi51mZmdwUJGU9hjN27vEz64Gps7uUefqxg27EAtH");
-const provider = anchor.Provider.local();
-anchor.setProvider(provider);
 
-const program = new anchor.Program(idl, programId, provider);
+describe('CLMM Trading New - swap_v2 Test', () => {
+  // const provider = anchor.AnchorProvider.local();
+  // anchor.setProvider(provider);
+  // const program = anchor.workspace.ClmmTradingNew as anchor.Program;
 
-describe('CLMM Trading New', () => {
+  // Define program ID and client
+  const programId = new anchor.web3.PublicKey("E39ZYh2CjA6ht8nNe5tRUKEWvBQMin8wB9Zi3iyrU8nG");
+  const provider = anchor.AnchorProvider.local();
+  anchor.setProvider(provider);
+
+  const program = new anchor.Program(idl, programId, provider);
+
+  // Hardcoded public keys (replace these with actual values for your test setup)
+  const raydiumProgramId = new anchor.web3.PublicKey("devi51mZmdwUJGU9hjN27vEz64Gps7uUefqxg27EAtH");
+
+  const ammConfigAddress = new anchor.web3.PublicKey("CQYbhr6amxUER4p5SC44C63R4qw4NFc9Z4Db9vF4tZwG");
+  const poolStateAddress = new anchor.web3.PublicKey("EMqgGrGCRn4A4sLqBPAq4wS7yCa8PatNPXQn7XBxBfm5");
+  const observationStateAddress = new anchor.web3.PublicKey("8nxYw9df3sYDLoFuXcaZSiNTsUVnEMDFaeQxXtULxFFm");
+
+  const inputVaultMintAddress = new anchor.web3.PublicKey("2qhv3WvZkB4sLc6k31Vt1o2E9YnnKSAdEwodZAv4FJnX");
+  const outputVaultMintAddress = new anchor.web3.PublicKey("2qhv3WvZkB4sLc6k31Vt1o2E9YnnKSAdEwodZAv4FJnX");
+
+  const memoProgramAddress = new anchor.web3.PublicKey("INSERT_MEMO_PROGRAM_ADDRESS_HERE");
+
+  const userInputTokenAccount = new anchor.web3.PublicKey("So11111111111111111111111111111111111111112");
+  const userOutputTokenAccount = new anchor.web3.PublicKey("4SgPnbBaYHjPu7zH6iUD243u1zESPpNsNJV4uE6297TP");
+
+  const poolInputVault = new anchor.web3.PublicKey("E4jPsJ12FcMofJemWKeEgaoQmUcNo35KHR4PjC6Tc1Lv");
+  const poolOutputVault = new anchor.web3.PublicKey("2fqpL5t9VHCju4MWthzz7gp4dGmFMn118kfQThwzD9ST");
+
+  const tokenProgram = new anchor.web3.PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
+  const tokenProgram2022 = new anchor.web3.PublicKey("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb");
+  const memoProgram = new anchor.web3.PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
+
+  // Hardcoded private key for the user
+  const userSecretKey = Uint8Array.from([153, 218, 59, 120, 157, 190, 93, 0, 143, 197, 255, 0, 126, 2, 107, 43, 48, 237, 161, 185, 31, 172, 195, 176, 179, 137, 1, 184, 27, 174, 227, 62, 27, 85, 211, 246, 143, 57, 206, 93, 160, 75, 208, 73, 51, 38, 82, 167, 148, 41, 170, 233, 39, 78, 190, 224, 90, 78, 118, 71, 129, 82, 177, 116]);
+
   let user: anchor.web3.Keypair;
-  let poolState: anchor.web3.Keypair;
-  let tokenMint0: anchor.web3.Keypair;
-  let tokenMint1: anchor.web3.Keypair;
-  let userToken0Account: anchor.web3.PublicKey;
-  let userToken1Account: anchor.web3.PublicKey;
-  let poolToken0Vault: anchor.web3.PublicKey;
-  let poolToken1Vault: anchor.web3.PublicKey;
 
   before(async () => {
-    user = anchor.web3.Keypair.generate();
-    tokenMint0 = anchor.web3.Keypair.generate();
-    tokenMint1 = anchor.web3.Keypair.generate();
+    // Load user keypair from the hardcoded private key
+    user = anchor.web3.Keypair.fromSecretKey(userSecretKey);
 
-    // Create mint for token 0 and token 1
-    await createMint(tokenMint0);
-    await createMint(tokenMint1);
-
-    // Create associated token accounts for the user
-    userToken0Account = await createAssociatedTokenAccount(user, tokenMint0.publicKey);
-    userToken1Account = await createAssociatedTokenAccount(user, tokenMint1.publicKey);
-
-    // Create pool token vaults
-    poolToken0Vault = await createAssociatedTokenAccount(user, tokenMint0.publicKey);
-    poolToken1Vault = await createAssociatedTokenAccount(user, tokenMint1.publicKey);
-
-    // Initialize pool state
-    poolState = anchor.web3.Keypair.generate();
+    console.log('Using user with public key:', user.publicKey.toString());
   });
 
-  // Helper function to create a mint
-  async function createMint(mint: anchor.web3.Keypair) {
-    await program.provider.connection.sendTransaction(
-      new anchor.web3.Transaction().add(
-        SystemProgram.createAccount({
-          fromPubkey: provider.wallet.publicKey,
-          newAccountPubkey: mint.publicKey,
-          lamports: await provider.provider.connection.getMinimumBalanceForRentExemption(
-            anchor.web3.MintLayout.span
-          ),
-          space: anchor.web3.MintLayout.span,
-          programId: TOKEN_PROGRAM_ID,
-        }),
-        Token.createInitMintInstruction(TOKEN_PROGRAM_ID, mint.publicKey, 0, provider.wallet.publicKey, null)
-      ),
-      [mint],
-      { skipPreflight: false, preflightCommitment: 'processed' }
-    );
-  }
-
-  // Helper function to create an associated token account
-  async function createAssociatedTokenAccount(owner: anchor.web3.Keypair, mint: anchor.web3.PublicKey) {
-    const associatedToken = await Token.getAssociatedTokenAddress(
-      Token.associatedProgramId,
-      TOKEN_PROGRAM_ID,
-      mint,
-      owner.publicKey
-    );
-    const transaction = new anchor.web3.Transaction().add(
-      Token.createAssociatedTokenAccountInstruction(
-        Token.associatedProgramId,
-        TOKEN_PROGRAM_ID,
-        mint,
-        associatedToken,
-        owner.publicKey,
-        owner.publicKey
-      )
-    );
-    await program.provider.send(transaction, [owner]);
-    return associatedToken;
-  }
-
-  it('Initializes the pool', async () => {
-    // Initialize pool
-    const tx = await program.rpc.initializePool(new anchor.BN(1000), new anchor.BN(1_000_000_000), {
-      accounts: {
-        authority: user.publicKey,
-        poolState: poolState.publicKey,
-        tokenMint0: tokenMint0.publicKey,
-        tokenMint1: tokenMint1.publicKey,
-        tokenVault0: poolToken0Vault,
-        tokenVault1: poolToken1Vault,
-        systemProgram: SystemProgram.programId,
-        tokenProgram: TOKEN_PROGRAM_ID,
-      },
-      signers: [user, poolState],
-    });
-
-    console.log('Pool initialized with tx: ', tx);
-  });
-
-  it('Creates liquidity', async () => {
-    // Create liquidity params
+  it('Performs a token swap', async () => {
+    // Define swap parameters
     const params = {
-      liquidityDelta: new anchor.BN(1000),
-      tickLowerIndex: -100,
-      tickUpperIndex: 100,
-      amount0Max: new anchor.BN(1000),
-      amount1Max: new anchor.BN(1000),
+      amount: new anchor.BN(1000000000), // Input token amount
+      otherAmountThreshold: new anchor.BN(50), // Minimum acceptable output tokens
+      sqrtPriceLimitX64: new anchor.BN(0), // No price limit for this test
+      isBaseInput: true, // Use base input for the swap
     };
 
-    // Create liquidity transaction
-    const tx = await program.rpc.createLiquidity(params, {
-      accounts: {
-        user: user.publicKey,
-        poolState: poolState.publicKey,
-        userToken0Account: userToken0Account,
-        userToken1Account: userToken1Account,
-        poolToken0Vault: poolToken0Vault,
-        poolToken1Vault: poolToken1Vault,
-        raydiumProgram: raydiumProgramId,
-        tokenProgram: TOKEN_PROGRAM_ID,
-        systemProgram: SystemProgram.programId,
-      },
-      signers: [user],
-    });
+    // Perform the swap transaction
+    const tx = await program.methods.swapV2(params).accounts({
+      payer: user.publicKey,
+      ammConfig: ammConfigAddress,
+      poolState: poolStateAddress,
+      inputTokenAccount: userInputTokenAccount,
+      outputTokenAccount: userOutputTokenAccount,
+      inputVault: poolInputVault,
+      outputVault: poolOutputVault,
+      observationState: observationStateAddress,
+      tokenProgram: tokenProgram,
+      tokenProgram2022: tokenProgram2022,
+      memoProgram: memoProgram,
+      inputVaultMint: inputVaultMintAddress,
+      outputVaultMint: outputVaultMintAddress,
+    }).signers([user]).rpc();
 
-    console.log('Liquidity created with tx: ', tx);
+    console.log('Swap transaction signature:', tx);
   });
-
-  // it('Performs swap', async () => {
-  //   // Swap parameters
-  //   const params = {
-  //     amount: new anchor.BN(100),
-  //     otherAmountThreshold: new anchor.BN(0),
-  //     sqrtPriceLimitX64: new anchor.BN(0),
-  //     isBaseInput: true,
-  //   };
-
-  //   // Perform swap
-  //   const tx = await program.rpc.swapV2(params, {
-  //     accounts: {
-  //       user: user.publicKey,
-  //       poolState: poolState.publicKey,
-  //       ammConfig: poolState.publicKey,  // Assuming some default configuration
-  //       userSourceToken: userToken0Account,
-  //       userDestinationToken: userToken1Account,
-  //       poolSourceVault: poolToken0Vault,
-  //       poolDestinationVault: poolToken1Vault,
-  //       observationState: poolState.publicKey,
-  //       tickArray: poolState.publicKey,
-  //       raydiumProgram: raydiumProgramId,
-  //       tokenProgram: TOKEN_PROGRAM_ID,
-  //     },
-  //     signers: [user],
-  //   });
-
-  //   console.log('Swap performed with tx: ', tx);
-  // });
 });
-
